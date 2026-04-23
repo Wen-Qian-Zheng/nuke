@@ -125,48 +125,49 @@ function startGame() {
     botTimeoutId: null,
     loadingTrigram: false,
   };
-  nextTurn(true); //  it should not advance the turn index begins the game loop
+  nextTurn(true);
 }
 
-function alivePlayers() { // returns only the players who still have lives
+function alivePlayers() {
   return state.players.filter(p => p.lives > 0);
 }
 
-function advanceTurnIndex() { // moves the turn index forward to the next alive
+function advanceTurnIndex() {
   do {
     state.turnIndex = (state.turnIndex + 1) % state.players.length;
-  } while (state.players[state.turnIndex].lives <= 0); //  skipping dead players until it finds an alive one trashed bc many bots takes too long
+  } while (state.players[state.turnIndex].lives <= 0);
 }
 
-async function nextTurn(first = false) { // avoid rotating away from the first playe
-  if (state.timer) { clearInterval(state.timer); state.timer = null; } //stops timer and nulls it
+async function nextTurn(first = false) {
+  if (state.timer) { clearInterval(state.timer); state.timer = null; }
   if (state.botTimeoutId) { clearTimeout(state.botTimeoutId); state.botTimeoutId = null; }
 
-  if (!first) advanceTurnIndex(); //if not the very first turn of the game moves the turn index 
+  if (!first) advanceTurnIndex();
 
   const alive = alivePlayers();
-  if (alive.length <= 1) {  // game over 
+  if (alive.length <= 1) {
+    state.over = true;
     state.winner = alive[0] || null;
-    renderGame();  // over screen
+    renderGame();
     return;
   }
 
-  state.loadingTrigram = true;  // ...
+  state.loadingTrigram = true;
   state.feedback = { text: "", kind: "" };
-  state.inputLocked = true; // player cant type whn loading
+  state.inputLocked = true;
   renderGame();
 
-  const tri = await pickTrigram(state.usedWords); //fetches rand til trigram fits criteria
-  state.trigram = tri; 
-  state.timeLeft = turnSeconds;  // resets secs
-  state.loadingTrigram = false; // clears the loading flag
-  state.inputLocked = false; // unlocks so player can now type
-  renderGame(); 
+  const tri = await pickTrigram(state.usedWords);
+  state.trigram = tri;
+  state.timeLeft = turnSeconds;
+  state.loadingTrigram = false;
+  state.inputLocked = false;
+  renderGame();
 
   state.timer = setInterval(() => {
-    state.timeLeft -= 0.1;
+    state.timeLeft -= 0.1; // bomb updater for the time thing
     if (state.timeLeft <= 0) {
-      timeUp(); 
+      timeUp();
     } else {
       updateBomb();
     }
@@ -174,21 +175,21 @@ async function nextTurn(first = false) { // avoid rotating away from the first p
 
   const current = state.players[state.turnIndex];
   if (!current.isMe) {
-    scheduleBotTurn(current); // bot searches for a solve
+    scheduleBotTurn(current);
   } else {
     setTimeout(() => {
       const input = document.getElementById("wordInput");
       if (input) input.focus();
-    }, 30); // 30ms render time
+    }, 30);
   }
 }
 
 async function scheduleBotTurn(bot) {
-  const word = await findBotWord(state.trigram, state.usedWords); // fbw->fetches words for the current trigram from the api n picks a random unused valid word
+  const word = await findBotWord(state.trigram, state.usedWords);
   if (word) {
     acceptWord(bot, word);
   } else {
-    timeUp(); // bot couldnt find so it loses a life
+    timeUp();
   }
 }
 
@@ -216,7 +217,7 @@ function timeUp() {
 
 async function isRealWord(word) {
   try {
-    const res = await fetch(`https://api.datamuse.com/words?sp=${word}&max=1`);
+    const res = await fetch(`https://api.datamuse.com/words?sp=${word}&max=1`); // checks if its a real word
     if (!res.ok) return false;
     const data = await res.json();
     return data.length > 0 && data[0].word === word;
@@ -225,7 +226,7 @@ async function isRealWord(word) {
   }
 }
 
-function acceptWord(player, word) {
+function acceptWord(player, word) { 
   if (state.timer) { clearInterval(state.timer); state.timer = null; }
   if (state.botTimeoutId) { clearTimeout(state.botTimeoutId); state.botTimeoutId = null; }
   state.usedWords.add(word);
@@ -252,7 +253,7 @@ async function submitMyWord(raw) {
 
   const valid = await isRealWord(word);
   if (!valid) {
-    setFeedback("not a real word", "bad");
+    setFeedback("Not a real word", "bad");
     const input = document.getElementById("wordInput");
     if (input) { input.value = ""; input.focus(); }
     return;
@@ -360,8 +361,8 @@ function renderGameOver() {
   wrap.className = "gameover";
   const won = state.winner && state.winner.isMe;
   wrap.innerHTML = `
-    <h2 class="${won ? "win" : "lose"}">${won ? "u an ijarian" : "ur a bum ahahahaha"}</h2>
-    <p>${won ? "? no way" : "gg i suppose"}</p>
+    <h2 class="${won ? "win" : "lose"}">${won ? "u an ijarian" : "haha u lost"}</h2>
+    <p>${won ? "i call scripts" : "geegees i suppose."}</p>
     <button class="play" id="again">Play Again</button>
     <div style="height:12px"></div>
     <button class="play" id="home" style="background:transparent; box-shadow:none; color:var(--muted); border:1px solid var(--border); padding:14px 36px; font-size:15px">Home</button>
