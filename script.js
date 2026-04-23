@@ -2,7 +2,6 @@ const turnSeconds = 7;
 const startingLives = 3;
 const minUnusedWords = 500;
 const bots = [
-  { id: "b1", name: "Bot 1" },
 ];
 const me = { id: "me", name: "You", isMe: true }; // defines self
 const letters = "abcdefghijklmnopqrstuvwxyz"; // all lowercase for trigram generation
