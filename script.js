@@ -125,49 +125,48 @@ function startGame() {
     botTimeoutId: null,
     loadingTrigram: false,
   };
-  nextTurn(true);
+  nextTurn(true); //  it should not advance the turn index begins the game loop
 }
 
-function alivePlayers() {
+function alivePlayers() { // returns only the players who still have lives
   return state.players.filter(p => p.lives > 0);
 }
 
-function advanceTurnIndex() {
+function advanceTurnIndex() { // moves the turn index forward to the next alive
   do {
     state.turnIndex = (state.turnIndex + 1) % state.players.length;
-  } while (state.players[state.turnIndex].lives <= 0);
+  } while (state.players[state.turnIndex].lives <= 0); //  skipping dead players until it finds an alive one trashed bc many bots takes too long
 }
 
-async function nextTurn(first = false) {
-  if (state.timer) { clearInterval(state.timer); state.timer = null; }
+async function nextTurn(first = false) { // avoid rotating away from the first playe
+  if (state.timer) { clearInterval(state.timer); state.timer = null; } //stops timer and nulls it
   if (state.botTimeoutId) { clearTimeout(state.botTimeoutId); state.botTimeoutId = null; }
 
-  if (!first) advanceTurnIndex();
+  if (!first) advanceTurnIndex(); //if not the very first turn of the game moves the turn index 
 
   const alive = alivePlayers();
-  if (alive.length <= 1) {
-    state.over = true;
+  if (alive.length <= 1) {  // game over 
     state.winner = alive[0] || null;
-    renderGame();
+    renderGame();  // over screen
     return;
   }
 
-  state.loadingTrigram = true;
+  state.loadingTrigram = true;  // ...
   state.feedback = { text: "", kind: "" };
-  state.inputLocked = true;
+  state.inputLocked = true; // player cant type whn loading
   renderGame();
 
-  const tri = await pickTrigram(state.usedWords);
-  state.trigram = tri;
-  state.timeLeft = turnSeconds;
-  state.loadingTrigram = false;
-  state.inputLocked = false;
-  renderGame();
+  const tri = await pickTrigram(state.usedWords); //fetches rand til trigram fits criteria
+  state.trigram = tri; 
+  state.timeLeft = turnSeconds;  // resets secs
+  state.loadingTrigram = false; // clears the loading flag
+  state.inputLocked = false; // unlocks so player can now type
+  renderGame(); 
 
   state.timer = setInterval(() => {
     state.timeLeft -= 0.1;
     if (state.timeLeft <= 0) {
-      timeUp();
+      timeUp(); 
     } else {
       updateBomb();
     }
@@ -175,21 +174,21 @@ async function nextTurn(first = false) {
 
   const current = state.players[state.turnIndex];
   if (!current.isMe) {
-    scheduleBotTurn(current);
+    scheduleBotTurn(current); // bot searches for a solve
   } else {
     setTimeout(() => {
       const input = document.getElementById("wordInput");
       if (input) input.focus();
-    }, 30);
+    }, 30); // 30ms render time
   }
 }
 
 async function scheduleBotTurn(bot) {
-  const word = await findBotWord(state.trigram, state.usedWords);
+  const word = await findBotWord(state.trigram, state.usedWords); // fbw->fetches words for the current trigram from the api n picks a random unused valid word
   if (word) {
     acceptWord(bot, word);
   } else {
-    timeUp();
+    timeUp(); // bot couldnt find so it loses a life
   }
 }
 
@@ -361,8 +360,8 @@ function renderGameOver() {
   wrap.className = "gameover";
   const won = state.winner && state.winner.isMe;
   wrap.innerHTML = `
-    <h2 class="${won ? "win" : "lose"}">${won ? "You cheated!" : "You lost"}</h2>
-    <p>${won ? "You won? Bro, I didn't make it possible." : "GGs, as expected."}</p>
+    <h2 class="${won ? "win" : "lose"}">${won ? "u an ijarian" : "ur a bum ahahahaha"}</h2>
+    <p>${won ? "? no way" : "gg i suppose"}</p>
     <button class="play" id="again">Play Again</button>
     <div style="height:12px"></div>
     <button class="play" id="home" style="background:transparent; box-shadow:none; color:var(--muted); border:1px solid var(--border); padding:14px 36px; font-size:15px">Home</button>
