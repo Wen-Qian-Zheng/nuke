@@ -2,6 +2,7 @@ const turnSeconds = 7;
 const startingLives = 3;
 const minUnusedWords = 500;
 const bots = [
+  { id: "b1", name: "Bot 1" },
 ];
 const me = { id: "me", name: "You", isMe: true }; // defines self
 const letters = "abcdefghijklmnopqrstuvwxyz"; // all lowercase for trigram generation
@@ -251,7 +252,7 @@ async function submitMyWord(raw) {
 
   const valid = await isRealWord(word);
   if (!valid) {
-    setFeedback("Not a real word", "bad");
+    setFeedback("not a real word", "bad");
     const input = document.getElementById("wordInput");
     if (input) { input.value = ""; input.focus(); }
     return;
