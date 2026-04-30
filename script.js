@@ -88,17 +88,18 @@ function renderHome() {
   const wrap = document.createElement("div");
   wrap.className = "home";
   wrap.innerHTML = `
-    <h1>bomb</h1>
-    <p class="tagline">oaky so like basically you find words that has those three letters tgt<br/>there are bots ofc cuz idk how to set up servers so youll never win</p>
+    <h1>lexicography nuke</h1>
+    <p class="tagline">enter words containing listed trigram/>single player word game</p>
     <div class="rules">
       <h3>How to play</h3>
       <ul>
-        <li>type a real 5+ letter word that contains the three consecutive letters shown anywhere (the api lwk sucks bear with it)</li>
-        <li>wordbomb.io copy but bad | dictionary laws insp by last letter (mmii)</li>
-        <li>fat creds to jeferson zheng he helped out a ton</li>
+        <li>minimum solve length: 5 letters (some plurals/conjugated words/'niche' chemical compounds may NOT work in game)</li>
+        <li>dictionary source: datamuse</li>
+        <li>low budget homemade wordbomb.io dupe</li>
+        <li>fat credits to jefferson zheng for helping out</li>
       </ul>
     </div>
-    <button class="play">tickle me with words or smth</button>
+    <button class="play">detonate</button>
   `;
   app.appendChild(wrap); // menu appearance and detects click 
   wrap.querySelector("button.play").addEventListener("click", () => startGame());
@@ -361,8 +362,8 @@ function renderGameOver() {
   wrap.className = "gameover";
   const won = state.winner && state.winner.isMe;
   wrap.innerHTML = `
-    <h2 class="${won ? "win" : "lose"}">${won ? "u an ijarian" : "haha u lost"}</h2>
-    <p>${won ? "i call scripts" : "geegees i suppose."}</p>
+    <h2 class="${won ? "win" : "lose"}">${won ? "so like that wasn't supposed to happen..." : "haha you lost"}</h2>
+    <p>${won ? "ijarian" : "geegees i suppose."}</p>
     <button class="play" id="again">Play Again</button>
     <div style="height:12px"></div>
     <button class="play" id="home" style="background:transparent; box-shadow:none; color:var(--muted); border:1px solid var(--border); padding:14px 36px; font-size:15px">Home</button>
