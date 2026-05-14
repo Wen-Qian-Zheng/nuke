@@ -1,376 +1,1010 @@
+import {
+  supabase,
+  signUp,
+  signIn,
+  signOut,
+  saveScore,
+  getLeaderboard,
+  getMyGames,
+  logTrigramPlay,
+  getMyTrigramPlays,
+} from "./supabase.js";
+
 const turnSeconds = 7;
 const startingLives = 3;
-const minUnusedWords = 500;
-const bots = [
-  { id: "b1", name: "Bot 1" },
+const minUnusedWords = 300;
+const alphabet = "abcdefghijklmnopqrstuvwxyz";
+
+const app = document.getElementById("app");
+const trigramIndex = new Map();
+let state = null;
+let currentUser = null;
+
+const lbPageSize = 10;
+let lbRows = null;
+let lbTab = null;
+const lbTabs = [
+  { key: "score", label: "Top Score", col: "score" },
+  { key: "wordsused", label: "Most Words", col: "wordsused" },
+  { key: "maxcombo", label: "Best Combo", col: "maxcombo" },
 ];
-const me = { id: "me", name: "You", isMe: true }; // defines self
-const letters = "abcdefghijklmnopqrstuvwxyz"; // all lowercase for trigram generation
 
-const app = document.getElementById("app"); // gets the dom element where the ui stuff would be rendered
+const wordsReady = fetch("/words.txt")
+  .then((r) => r.text())
+  .then((text) => {
+    for (const w of text.split("\n")) {
+      const word = w.trim().toLowerCase();
+      if (!/^[a-z]+$/.test(word)) continue;
+      const seen = new Set();
+      for (let i = 0; i <= word.length - 3; i++) {
+        const tri = word.slice(i, i + 3);
+        if (seen.has(tri)) continue;
+        seen.add(tri);
+        if (!trigramIndex.has(tri)) trigramIndex.set(tri, new Set());
+        trigramIndex.get(tri).add(word);
+      }
+    }
+  });
 
-try { localStorage.removeItem("wb_words_v1"); } catch (e) {} // finds the list of words i typed and removes everything from it so i can type the words again
-
-const trigramCache = new Map(); // creates cache for api responses per trigram and it clears when it gers refreshed
-
-function looksLikeRealWord(word) {
-  const vowels = "aeiouy"; // due to the amount of acronyms present in this API there had to be a parameter
-  const vowelCount = word.split("").filter(c => vowels.includes(c)).length; // in which acronyms are somehow filtered out
-// there had to be a better way around this but ill look into that later
-  if (vowelCount === 0) return false; // according to mainstream lexicography english has no ordinary vocabularies without vowels
-
-  const ratio = vowelCount / word.length; 
-  if (ratio < 0.2) return false; // holy fucking shit this is unbalanced as fuck fix later
-
-  if (/[bcdfghjklmnpqrstvwxyz]{4,}/.test(word)) return false; // consonants min 4 per word | fix later when it needs to be balanced
-
-  return true;
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-async function fetchWordsForTrigram(trigram) { //returns cached words if available | asks api for words with trigram
-  if (trigramCache.has(trigram)) return trigramCache.get(trigram);
-  const url = `https://api.datamuse.com/words?sp=*${trigram}*&max=1000`; // ref api search
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("oh shucks it failed D:");
-  const data = await res.json(); 
-  const words = data
-    .map(d => (d.word || "").toLowerCase()) 
-    .filter(w => /^[a-z]+$/.test(w) && w.length >= 5 && w.includes(trigram)); // for word char > 5 = valid words | to exclude possible acronyms that shouldnt work normally
-  trigramCache.set(trigram, words); // maps everything to lowercase and filtres to only alphabetic and greater than 5 letters with the trigram
-  return words;
+function makeButton(cls, text, handler) {
+  const btn = document.createElement("button");
+  btn.className = cls;
+  btn.textContent = text;
+  if (handler) btn.onclick = handler;
+  return btn;
 }
 
-function randomTrigram() { // rand assignment
+function renderScreen(className, html) {
+  app.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = className;
+  el.innerHTML = html;
+  app.appendChild(el);
+  return el;
+}
+
+function makeCardScreen(title, backFn, tabs, activeKey, tabDataAttr, onTab) {
+  const screen = document.createElement("div");
+  const card = document.createElement("div");
+  card.className = "lb-card";
+
+  const header = document.createElement("div");
+  header.className = "lb-header";
+  const h2 = document.createElement("h2");
+  h2.textContent = title;
+  header.append(h2, makeButton("btn-link", "← Back", backFn));
+
+  const tabBar = document.createElement("div");
+  tabBar.className = "lb-tabs";
+  for (const tab of tabs) {
+    const btn = makeButton(
+      `lb-tab${tab.key === activeKey ? " lb-tab-active" : ""}`,
+      tab.label,
+      () => onTab(tab.key),
+    );
+    btn.dataset[tabDataAttr] = tab.key;
+    tabBar.appendChild(btn);
+  }
+
+  const body = document.createElement("div");
+  body.innerHTML = '<div class="lb-loading">Loading…</div>';
+
+  card.append(header, tabBar, body);
+  screen.appendChild(card);
+  return { screen, body };
+}
+
+async function initAuth() {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user)
+      currentUser = {
+        email: user.email,
+        username: user.user_metadata?.username || user.email.split("@")[0],
+      };
+  } catch {
+    currentUser = null;
+  }
+}
+
+async function handleLogout() {
+  await signOut();
+  currentUser = null;
+  renderHome();
+}
+
+function randomTrigram() {
   return (
-    letters[Math.floor(Math.random() * 26)] +
-    letters[Math.floor(Math.random() * 26)] +
-    letters[Math.floor(Math.random() * 26)] // returns a string of three random letters from the alphabet | yes its brute force
+    alphabet[Math.floor(Math.random() * 26)] +
+    alphabet[Math.floor(Math.random() * 26)] +
+    alphabet[Math.floor(Math.random() * 26)]
   );
 }
 
-async function pickTrigram(usedWords) { 
+function getUnusedWords(words, usedWords) {
+  let count = 0;
+  for (const w of words) if (!usedWords.has(w)) count++;
+  return count;
+}
+
+async function pickTrigram(usedWords) {
+  await wordsReady;
   while (true) {
-    const tri = randomTrigram(); // generates a random trigram
-    let words; 
-    try {
-      words = await fetchWordsForTrigram(tri);
-    } catch (e) {
-      continue; // if fetch fail retries
-    }
-    const unused = words.filter(w => !usedWords.has(w)); // filters to unused words 
-    if (unused.length >= minUnusedWords) return tri; // detector sys >500 words for now might change later cuz its too hard ):
+    const trigram = randomTrigram();
+    const words = trigramIndex.get(trigram);
+    if (words && getUnusedWords(words, usedWords) >= minUnusedWords)
+      return trigram;
   }
 }
 
-async function findBotWord(trigram, usedWords) { 
-  let words;
-  try {
-    words = await fetchWordsForTrigram(trigram); 
-  } catch (e) {
-    return null; // error catch
-  }
-  const candidates = words.filter(w => !usedWords.has(w) && looksLikeRealWord(w) && w.length >= 5); // parameter filters w/ unused
-  if (!candidates.length) return null; // if none bot stops
-  return candidates[Math.floor(Math.random() * candidates.length)]; // selects random candidate
-}
-
-function checkWord(word, trigram, usedWords) {
-  if (!looksLikeRealWord(word)) { return { ok: false, reason: "haha thats not in the dictionary" }; } 
-  if (!word || word.length < 5) return { ok: false, reason: "more than 5 letters please and tbanks" };
-  if (!/^[a-z]+$/.test(word)) return { ok: false, reason: "i dont think thats in the common english lexicon matey" };
-  if (!word.includes(trigram)) return { ok: false, reason: `hey it must have "${trigram.toUpperCase()}"` };
-  if (usedWords.has(word)) return { ok: false, reason: "dumbass its used" };
+function validateWord(word, trigram, usedWords) {
+  if (!word.includes(trigram))
+    return { ok: false, reason: `Must contain "${trigram.toUpperCase()}"` };
+  if (word.length < 5) return { ok: false, reason: "Too short" };
+  if (usedWords.has(word)) return { ok: false, reason: "Already used" };
+  if (!trigramIndex.get(trigram)?.has(word))
+    return { ok: false, reason: "Not a valid word" };
   return { ok: true };
+}
+
+function getTrigramWords(trigram, exclude = null) {
+  const words = trigramIndex.get(trigram);
+  if (!words) return null;
+  const valid = exclude ? [...words].filter((w) => w !== exclude) : [...words];
+  return valid.length ? valid[Math.floor(Math.random() * valid.length)] : null;
+}
+
+function openModal(box) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.appendChild(box);
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function showRenameModal() {
+  const box = document.createElement('div');
+  box.className = 'modal-box';
+  box.innerHTML = `
+    <h2>Update display name</h2>
+    <input class="modal-input" id="rename-input" type="text" maxlength="32" placeholder="New name…" />
+    <p class="modal-error" id="rename-error"></p>
+    <div class="modal-btns">
+      <button class="modal-btn-cancel" id="rename-cancel">Cancel</button>
+      <button class="modal-btn-confirm" id="rename-save">Save</button>
+    </div>
+    <button class="btn-delete-account" id="rename-delete">Delete account &amp; all data</button>
+  `;
+  const overlay = openModal(box);
+  const input    = box.querySelector('#rename-input');
+  const errorEl  = box.querySelector('#rename-error');
+  const saveBtn  = box.querySelector('#rename-save');
+
+  input.value = currentUser.username;
+  setTimeout(() => { input.focus(); input.select(); }, 50);
+
+  box.querySelector('#rename-cancel').onclick = () => overlay.remove();
+  box.querySelector('#rename-delete').onclick = () => { overlay.remove(); showDeleteConfirm(1); };
+
+  const doSave = async () => {
+    const name = input.value.trim();
+    if (!name) { errorEl.textContent = 'Name cannot be empty.'; return; }
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    try {
+      await supabase.auth.updateUser({ data: { username: name, display_name: name } });
+      currentUser.username = name;
+      overlay.remove();
+      renderHome();
+    } catch (err) {
+      errorEl.textContent = err.message || 'Could not update name.';
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+    }
+  };
+
+  saveBtn.onclick = doSave;
+  input.onkeydown = (e) => { if (e.key === 'Enter') doSave(); };
+}
+
+function showDeleteConfirm(stage = 1) {
+  const stages = [
+    {
+      title: 'Delete account?',
+      msg: 'This will permanently delete your account and <strong>all</strong> your game data. This cannot be undone.',
+      btn: 'Continue',
+    },
+    {
+      title: 'Are you really sure?',
+      msg: 'Every score, stat, and trigram play you have ever recorded will be <strong>wiped forever</strong>.',
+      btn: "Yes, I'm sure",
+    },
+    {
+      title: 'You\'re account data will be cooked.',
+      msg: 'Your account will be deleted <strong>immediately</strong>. There is no recovery, no support ticket (this ain\'t discord), no way back.',
+      btn: 'Delete my account',
+    },
+  ];
+
+  const { title, msg, btn } = stages[stage - 1];
+  const isLast = stage === 3;
+
+  const box = document.createElement('div');
+  box.className = 'modal-box';
+  box.innerHTML = `
+    <h2 class="modal-title-danger">${title}</h2>
+    <p class="modal-msg">${msg}</p>
+    <div class="modal-btns">
+      <button class="modal-btn-cancel" id="del-cancel">Cancel</button>
+      <button class="modal-btn-danger" id="del-confirm" disabled>${btn} (3s)</button>
+    </div>
+  `;
+  const overlay  = openModal(box);
+  const confirmBtn = box.querySelector('#del-confirm');
+  box.querySelector('#del-cancel').onclick = () => overlay.remove();
+
+  let secs = 3;
+  const iv = setInterval(() => {
+    secs--;
+    if (secs <= 0) {
+      clearInterval(iv);
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = btn;
+    } else {
+      confirmBtn.textContent = `${btn} (${secs}s)`;
+    }
+  }, 1000);
+
+  confirmBtn.onclick = () => {
+    overlay.remove();
+    if (isLast) doDeleteAccount();
+    else showDeleteConfirm(stage + 1);
+  };
+}
+
+async function doDeleteAccount() {
+  const box = document.createElement('div');
+  box.className = 'modal-box';
+  box.innerHTML = `<p class="modal-msg" style="text-align:center;padding:8px 0">Deleting account…</p>`;
+  const overlay = openModal(box);
+  try {
+    const { error } = await supabase.rpc('delete_my_account');
+    if (error) throw error;
+    await supabase.auth.signOut();
+    overlay.remove();
+    currentUser = null;
+    renderHome();
+  } catch (err) {
+    box.innerHTML = `
+      <h2>Error</h2>
+      <p class="modal-msg">${escapeHtml(err.message || 'Something went wrong.')}</p>
+      <div class="modal-btns">
+        <button class="modal-btn-cancel" id="err-close">Close</button>
+      </div>`;
+    box.querySelector('#err-close').onclick = () => overlay.remove();
+  }
 }
 
 function renderHome() {
   app.innerHTML = "";
-  const wrap = document.createElement("div");
-  wrap.className = "home";
-  wrap.innerHTML = `
-    <h1>lexicography nuke</h1>
-    <p class="tagline">enter words containing listed trigram/>single player word game</p>
-    <div class="rules">
-      <h3>How to play</h3>
-      <ul>
-        <li>minimum solve length: 5 letters (some plurals/conjugated words/'niche' chemical compounds may NOT work in game)</li>
-        <li>dictionary source: datamuse</li>
-        <li>low budget homemade wordbomb.io dupe</li>
-        <li>fat credits to jefferson zheng for helping out</li>
-      </ul>
+  const home = document.createElement("div");
+  home.className = "home";
+
+  const h1 = document.createElement("h1");
+  h1.textContent = "Word Bomb";
+
+  const tagline = document.createElement("p");
+  tagline.className = "tagline";
+
+  const actions = document.createElement("div");
+  actions.className = "home-actions";
+
+  if (currentUser) {
+    tagline.textContent = "Three letters. Seven seconds. Survive 3 mistakes.";
+
+    const greeting = document.createElement("p");
+    greeting.className = "user-greeting";
+    greeting.innerHTML = `Welcome back, <button class="user-name-btn">${escapeHtml(currentUser.username)}</button>`;
+    greeting.querySelector('.user-name-btn').onclick = showRenameModal;
+
+    const playBtn = makeButton("play", "Play", startGame);
+    const lbBtn   = makeButton("btn-secondary", "Leaderboard", () => renderLeaderboard());
+    const statsBtn = makeButton("btn-secondary", "My Stats", () => renderStats());
+    const logoutBtn = makeButton("btn-link", "Log out", handleLogout);
+
+    [playBtn, lbBtn, statsBtn, logoutBtn].forEach(b => b.disabled = true);
+    wordsReady.then(() => {
+      [playBtn, lbBtn, statsBtn, logoutBtn].forEach(b => b.disabled = false);
+    });
+
+    actions.append(playBtn, lbBtn, statsBtn, logoutBtn);
+    home.append(h1, tagline, greeting, actions);
+  } else {
+    tagline.textContent = "Three letters. Seven seconds. Three lives.";
+
+    const loginBtn  = makeButton("play", "Login / Sign Up", () => renderAuth("login"));
+    const guestBtn  = makeButton("btn-secondary", "Play as Guest", startGame);
+    const lbBtn2    = makeButton("btn-secondary", "Leaderboard", () => renderLeaderboard());
+
+    [loginBtn, guestBtn, lbBtn2].forEach(b => b.disabled = true);
+    wordsReady.then(() => {
+      [loginBtn, guestBtn, lbBtn2].forEach(b => b.disabled = false);
+    });
+
+    actions.append(loginBtn, guestBtn, lbBtn2);
+    home.append(h1, tagline, actions);
+  }
+
+  app.appendChild(home);
+}
+
+function renderAuth(mode = "login") {
+  const isSignup = mode === "signup";
+  const el = renderScreen(
+    "auth-screen",
+    `
+    <div class="auth-card">
+      <h2 class="auth-title">${isSignup ? "Create Account" : "Welcome Back"}</h2>
+      <p class="auth-subtitle">${isSignup ? "Sign up to save your scores" : "Login to track your scores"}</p>
+      <div class="auth-tabs">
+        <button class="auth-tab ${!isSignup ? "active" : ""}" id="loginTab">Login</button>
+        <button class="auth-tab ${isSignup ? "active" : ""}" id="signupTab">Sign Up</button>
+      </div>
+      <form class="auth-form" id="authForm" novalidate>
+        ${
+          isSignup
+            ? `<div class="field-group">
+          <label for="usernameField">Username</label>
+          <input id="usernameField" type="text" placeholder="YourName" autocomplete="username" required />
+        </div>`
+            : ""
+        }
+        <div class="field-group">
+          <label for="emailField">Email</label>
+          <input id="emailField" type="email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+        <div class="field-group">
+          <label for="passField">Password</label>
+          <input id="passField" type="password" placeholder="••••••••" autocomplete="${isSignup ? "new-password" : "current-password"}" required />
+        </div>
+        <p class="auth-error" id="authError" hidden></p>
+        <button type="submit" class="play auth-submit" id="submitBtn">
+          ${isSignup ? "Create Account" : "Login"}
+        </button>
+      </form>
+      <button class="btn-link auth-back" id="backBtn">← Back to Home</button>
     </div>
-    <button class="play">detonate</button>
+  `,
+  );
+
+  const loginTab = el.querySelector("#loginTab");
+  const signupTab = el.querySelector("#signupTab");
+  const backBtn = el.querySelector("#backBtn");
+  const form = el.querySelector("#authForm");
+  const errorEl = el.querySelector("#authError");
+  const submitBtn = el.querySelector("#submitBtn");
+  const emailField = el.querySelector("#emailField");
+  const passField = el.querySelector("#passField");
+  const usernameField = el.querySelector("#usernameField");
+
+  loginTab.onclick = () => renderAuth("login");
+  signupTab.onclick = () => renderAuth("signup");
+  backBtn.onclick = renderHome;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = emailField.value.trim();
+    const password = passField.value;
+    const username = usernameField?.value.trim();
+
+    errorEl.hidden = true;
+    submitBtn.disabled = true;
+    submitBtn.textContent = isSignup ? "Creating…" : "Logging in…";
+
+    try {
+      const user = isSignup
+        ? await signUp(email, password, username || email.split("@")[0])
+        : await signIn(email, password);
+      currentUser = {
+        email: user.email,
+        username: user.user_metadata?.username || email.split("@")[0],
+      };
+      renderHome();
+    } catch (err) {
+      errorEl.textContent =
+        err.message || "Something went wrong. Please try again.";
+      errorEl.hidden = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = isSignup ? "Create Account" : "Login";
+    }
+  });
+}
+
+function pagerHTML(page, total) {
+  if (total <= 1) return "";
+  return `<div class="pager">
+    <button class="pager-btn" data-dir="-1" ${page <= 1 ? "disabled" : ""}>← Prev</button>
+    <span class="pager-info">${page} / ${total}</span>
+    <button class="pager-btn" data-dir="1"  ${page >= total ? "disabled" : ""}>Next →</button>
+  </div>`;
+}
+
+function lbRowHTML(r, rank, activeTab, medals) {
+  const isMe = currentUser?.username === r.username;
+  return `<div class="lb-row${isMe ? " lb-me" : ""}">
+    <span class="lb-rank">${medals[rank] ?? rank + 1}</span>
+    <span class="lb-name">${escapeHtml(r.username)}</span>
+    <span class="lb-score ${activeTab === "score" ? "lb-col-active" : ""}">${r.score.toLocaleString()}</span>
+    <span class="lb-words ${activeTab === "wordsused" ? "lb-col-active" : ""}">${r.wordsused}</span>
+    <span class="lb-combo ${activeTab === "maxcombo" ? "lb-col-active" : ""}">x${r.maxcombo}</span>
+  </div>`;
+}
+
+async function renderLeaderboard(activeTab = "score", page = 1) {
+  const { screen, body } = makeCardScreen(
+    "Leaderboard",
+    renderHome,
+    lbTabs,
+    activeTab,
+    "tab",
+    (key) => {
+      lbRows = null;
+      lbTab = null;
+      renderLeaderboard(key, 1);
+    },
+  );
+  screen.className = "leaderboard-screen";
+  app.innerHTML = "";
+  app.appendChild(screen);
+
+  const tab = lbTabs.find((t) => t.key === activeTab);
+  try {
+    if (lbTab !== activeTab || !lbRows) {
+      lbRows = await getLeaderboard(200, tab.col);
+      lbTab = activeTab;
+    }
+    const rows = lbRows;
+    if (!rows?.length) {
+      body.innerHTML = `<p class="lb-empty">No scores yet. Be the first to play!</p>`;
+      return;
+    }
+
+    const totalPages = Math.ceil(rows.length / lbPageSize);
+    page = Math.max(1, Math.min(page, totalPages));
+    const offset = (page - 1) * lbPageSize;
+    const medals = ["🥇", "🥈", "🥉"];
+
+    body.innerHTML = `
+      <div class="lb-table">
+        <div class="lb-row lb-head">
+          <span>#</span><span>Player</span>
+          <span class="${activeTab === "score" ? "lb-col-active" : ""}">Score</span>
+          <span class="${activeTab === "wordsused" ? "lb-col-active" : ""}">Words</span>
+          <span class="${activeTab === "maxcombo" ? "lb-col-active" : ""}">Best Combo</span>
+        </div>
+        ${rows
+          .slice(offset, offset + lbPageSize)
+          .map((r, i) => lbRowHTML(r, offset + i, activeTab, medals))
+          .join("")}
+      </div>
+      ${pagerHTML(page, totalPages)}
+    `;
+    body.querySelectorAll(".pager-btn").forEach((btn) => {
+      btn.onclick = () =>
+        renderLeaderboard(activeTab, page + parseInt(btn.dataset.dir));
+    });
+  } catch {
+    body.innerHTML = `<p class="lb-empty">No scores yet. Be the first to play!</p>`;
+  }
+}
+
+const trigramPageSize = 10;
+
+const statsPeriods = [
+  { key: "alltime", label: "All Time", since: null },
+  {
+    key: "monthly",
+    label: "Monthly",
+    since: () => new Date(Date.now() - 30 * 864e5).toISOString(),
+  },
+  {
+    key: "weekly",
+    label: "Weekly",
+    since: () => new Date(Date.now() - 7 * 864e5).toISOString(),
+  },
+  {
+    key: "daily",
+    label: "Daily",
+    since: () => new Date(Date.now() - 864e5).toISOString(),
+  },
+];
+
+function calcTrigramStats(plays) {
+  const map = new Map();
+  for (const p of plays) {
+    if (!map.has(p.trigram))
+      map.set(p.trigram, { total: 0, solved: 0, lengths: [], times: [] });
+    const t = map.get(p.trigram);
+    t.total++;
+    if (p.solved) {
+      t.solved++;
+      if (p.wordlength) t.lengths.push(p.wordlength);
+      if (p.timetaken != null) t.times.push(p.timetaken);
+    }
+  }
+  const avg = (arr) =>
+    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+  return Array.from(map.entries())
+    .map(([trigram, d]) => ({
+      trigram,
+      total: d.total,
+      solved: d.solved,
+      rate: d.total > 0 ? d.solved / d.total : 0,
+      avgLength: avg(d.lengths),
+      avgTime: avg(d.times),
+    }))
+    .sort((a, b) => a.rate - b.rate);
+}
+
+function calcStats(games) {
+  if (!games.length) return null;
+  const scores = games.map((g) => g.score);
+  const words = games.map((g) => g.wordsused);
+  const combos = games.map((g) => g.maxcombo);
+  const avg = (arr) => Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+  return {
+    games: games.length,
+    bestScore: Math.max(...scores),
+    avgScore: avg(scores),
+    totalWords: words.reduce((a, b) => a + b, 0),
+    bestWords: Math.max(...words),
+    avgWords: avg(words),
+    bestCombo: Math.max(...combos),
+    avgCombo: avg(combos),
+  };
+}
+
+function statCardHTML(label, value, accent = false) {
+  return `<div class="stat-card${accent ? " stat-card--accent" : ""}">
+    <span class="stat-label">${label}</span>
+    <span class="stat-value">${value}</span>
+  </div>`;
+}
+
+async function renderStats(activePeriod = "alltime") {
+  const { screen, body } = makeCardScreen(
+    "My Stats",
+    renderHome,
+    statsPeriods,
+    activePeriod,
+    "period",
+    (key) => renderStats(key),
+  );
+  screen.className = "stats-screen";
+  app.innerHTML = "";
+  app.appendChild(screen);
+
+  const period = statsPeriods.find((p) => p.key === activePeriod);
+  const since = period.since ? period.since() : null;
+
+  try {
+    const [games, plays] = await Promise.all([
+      getMyGames(since),
+      getMyTrigramPlays(since),
+    ]);
+    const stats = calcStats(games);
+    const trigramStats = calcTrigramStats(plays);
+
+    if (!stats) {
+      body.innerHTML = `<p class="lb-empty">No games played in this period yet.</p>`;
+      return;
+    }
+
+    const trigramGameWrapId = "trigramGameTableWrap";
+    body.innerHTML = `
+      <div class="stats-grid">
+        ${statCardHTML("Games Played", stats.games)}
+        ${statCardHTML("Best Score", stats.bestScore.toLocaleString(), true)}
+        ${statCardHTML("Avg Score", stats.avgScore.toLocaleString())}
+        ${statCardHTML("Best Combo", `x${stats.bestCombo}`, true)}
+        ${statCardHTML("Avg Combo", `x${stats.avgCombo}`)}
+        ${statCardHTML("Best Round (words)", stats.bestWords, true)}
+        ${statCardHTML("Avg Words / Game", stats.avgWords)}
+        ${statCardHTML("Total Words Typed", stats.totalWords.toLocaleString())}
+      </div>
+      ${
+        trigramStats.length === 0
+          ? `<p class="lb-empty" style="padding:20px 0 0">Not enough trigram data yet - play more rounds!</p>`
+          : `<div class="trigramGame-section"><h3 class="trigramGame-heading">Trigram Breakdown</h3><div id="${trigramGameWrapId}"></div></div>`
+      }
+    `;
+    if (trigramStats.length > 0) {
+      const trigramGameWrap = body.querySelector(`#${trigramGameWrapId}`);
+      renderTgTable(trigramStats, 1, trigramGameWrap);
+    }
+  } catch {
+    body.innerHTML = `<p class="lb-empty">Couldn't load stats. Try again later.</p>`;
+  }
+}
+
+const measureCanvas = document.createElement("canvas").getContext("2d");
+function fitFontSize(text, availPx, maxPx = 13, minPx = 8) {
+  for (let size = maxPx; size >= minPx; size--) {
+    measureCanvas.font = `600 ${size}px monospace`;
+    if (measureCanvas.measureText(text).width <= availPx) return size;
+  }
+  return minPx;
+}
+
+function setChipWord(chip, word) {
+  chip.textContent = word || "-";
+  chip.style.fontSize = word ? fitFontSize(word, 96) + "px" : "13px";
+}
+
+function wireChip(chip, trigram) {
+  chip.title = "Click for another example";
+  chip.classList.remove("loading");
+  chip.onclick = () => {
+    const prev = chip.textContent;
+    chip.textContent = "…";
+    chip.style.fontSize = "13px";
+    chip.classList.add("loading");
+    chip.onclick = null;
+    const next = getTrigramWords(trigram, prev);
+    setChipWord(chip, next || prev);
+    wireChip(chip, trigram);
+  };
+}
+
+function trigramGameRowHTML(t) {
+  const solveRate = Math.round(t.rate * 100);
+  const hard = solveRate < 50;
+  const lenStr = t.avgLength != null ? t.avgLength.toFixed(1) : "-";
+  const timeStr = t.avgTime != null ? t.avgTime.toFixed(2) + "s" : "-";
+  return `<div class="trigramGame-row${hard ? " trigramGame-hard" : ""}">
+    <span class="trigramGame-badge">${escapeHtml(t.trigram)}</span>
+    <span>${t.total}</span>
+    <span>
+      <span class="trigramGame-rate-bar">
+        <span class="trigramGame-rate-fill ${hard ? "trigramGame-rate-bad" : "trigramGame-rate-good"}" style="width:${solveRate}%"></span>
+      </span>
+      ${solveRate}%
+    </span>
+    <span>${lenStr}</span>
+    <span>${timeStr}</span>
+    <span class="trigramGame-word-chip loading" data-trigram="${escapeHtml(t.trigram)}">…</span>
+  </div>`;
+}
+
+function renderTgTable(trigramGame, page, container) {
+  const totalPages = Math.ceil(trigramGame.length / trigramPageSize);
+  page = Math.max(1, Math.min(page, totalPages));
+  const pageTg = trigramGame.slice((page - 1) * trigramPageSize, page * trigramPageSize);
+
+  container.innerHTML = `
+    <div class="trigramGame-table">
+      <div class="trigramGame-row trigramGame-head">
+        <span>Trigram</span><span>Rounds</span><span>Success</span>
+        <span>Avg Length</span><span>Avg Time</span><span>Example Word</span>
+      </div>
+      ${pageTg.map(trigramGameRowHTML).join("")}
+    </div>
+    ${pagerHTML(page, totalPages)}
   `;
-  app.appendChild(wrap); // menu appearance and detects click 
-  wrap.querySelector("button.play").addEventListener("click", () => startGame());
+
+  container.querySelectorAll(".pager-btn").forEach((btn) => {
+    btn.onclick = () =>
+      renderTgTable(trigramGame, page + parseInt(btn.dataset.dir), container);
+  });
+  container.querySelectorAll(".trigramGame-word-chip").forEach((chip) => {
+    const word = getTrigramWords(chip.dataset.trigram);
+    setChipWord(chip, word);
+    if (word) wireChip(chip, chip.dataset.trigram);
+    else chip.classList.remove("loading");
+  });
 }
 
-function showHome() {
-  renderHome(); // homescreen 
+function clearTimer() {
+  if (state?.rafId) cancelAnimationFrame(state.rafId);
+  if (state?.timeoutId) clearTimeout(state.timeoutId);
+  if (state) {
+    state.rafId = null;
+    state.timeoutId = null;
+  }
 }
-
-let state = null;
 
 function startGame() {
   state = {
-    players: [me, ...bots].map(p => ({ ...p, lives: startingLives })),
-    turnIndex: 0, // player starts first 
-    trigram: "", // initi current trigram
-    usedWords: new Set(), // hold all the words that have been played
-    history: [], //  empty array that will store the list of recently played words
-    timer: null,
+    trigram: "",
+    usedWords: new Set(),
     timeLeft: turnSeconds,
+    endsAt: 0,
     feedback: { text: "", kind: "" },
-    inputLocked: false,
-    over: false,  // true when only one player remains
-    botTimeoutId: null,
-    loadingTrigram: false,
+    phase: "loading",
+    lives: startingLives,
+    score: 0,
+    combo: 0,
+    maxCombo: 0,
+    rafId: null,
+    timeoutId: null,
+    els: null,
   };
-  nextTurn(true);
+  renderGameFrame();
+  nextRound();
 }
 
-function alivePlayers() {
-  return state.players.filter(p => p.lives > 0);
-}
-
-function advanceTurnIndex() {
-  do {
-    state.turnIndex = (state.turnIndex + 1) % state.players.length;
-  } while (state.players[state.turnIndex].lives <= 0);
-}
-
-async function nextTurn(first = false) {
-  if (state.timer) { clearInterval(state.timer); state.timer = null; }
-  if (state.botTimeoutId) { clearTimeout(state.botTimeoutId); state.botTimeoutId = null; }
-
-  if (!first) advanceTurnIndex();
-
-  const alive = alivePlayers();
-  if (alive.length <= 1) {
-    state.over = true;
-    state.winner = alive[0] || null;
-    renderGame();
+async function nextRound() {
+  clearTimer();
+  if (state.lives <= 0) {
+    state.phase = "over";
+    renderGameOver();
     return;
   }
 
-  state.loadingTrigram = true;
-  state.feedback = { text: "", kind: "" };
-  state.inputLocked = true;
-  renderGame();
+  state.phase = "loading";
+  setFeedback("", "");
+  updatePlayers();
 
   const tri = await pickTrigram(state.usedWords);
+  if (state.phase !== "loading") return;
+
   state.trigram = tri;
+  state.endsAt = performance.now() + turnSeconds * 1000;
+  state.phase = "playing";
   state.timeLeft = turnSeconds;
-  state.loadingTrigram = false;
-  state.inputLocked = false;
-  renderGame();
 
-  state.timer = setInterval(() => {
-    state.timeLeft -= 0.1; // bomb updater for the time thing
-    if (state.timeLeft <= 0) {
-      timeUp();
-    } else {
-      updateBomb();
-    }
-  }, 100);
-
-  const current = state.players[state.turnIndex];
-  if (!current.isMe) {
-    scheduleBotTurn(current);
-  } else {
-    setTimeout(() => {
-      const input = document.getElementById("wordInput");
-      if (input) input.focus();
-    }, 30);
-  }
+  updateStage();
+  updateBomb();
+  state.rafId = requestAnimationFrame(tick);
 }
 
-async function scheduleBotTurn(bot) {
-  const word = await findBotWord(state.trigram, state.usedWords);
-  if (word) {
-    acceptWord(bot, word);
-  } else {
-    timeUp();
-  }
+function tick() {
+  if (state.phase !== "playing") return;
+  const remainingMs = state.endsAt - performance.now();
+  state.timeLeft = Math.max(0, remainingMs / 1000);
+  state.els.timer.textContent = `${state.timeLeft.toFixed(1)}s`;
+  if (remainingMs <= 0) return timeUp();
+  updateBomb();
+  state.rafId = requestAnimationFrame(tick);
 }
 
 function timeUp() {
-  if (state.timer) { clearInterval(state.timer); state.timer = null; }
-  if (state.botTimeoutId) { clearTimeout(state.botTimeoutId); state.botTimeoutId = null; }
-  const current = state.players[state.turnIndex];
-  current.lives -= 1;
-  state.feedback = { text: `${current.isMe ? "You" : current.name} lost a life!`, kind: "bad" };
-  state.inputLocked = true;
-  renderGame();
-
-  const myPlayer = state.players.find(p => p.isMe);
-  if (myPlayer.lives <= 0) {
-    setTimeout(() => {
-      state.over = true;
-      state.winner = null;
-      state.playerLost = true;
-      renderGame();
-    }, 800);
+  if (state.phase !== "playing") return;
+  clearTimer();
+  state.lives -= 1;
+  state.combo = 0;
+  if (currentUser)
+    logTrigramPlay({
+      trigram: state.trigram,
+      solved: false,
+      wordlength: null,
+      timetaken: turnSeconds,
+    }).catch((err) =>
+      console.error("logTrigramPlay (fail):", err?.message ?? err),
+    );
+  setFeedback("Too slow! -1 life", "bad");
+  if (state.lives <= 0) {
+    state.phase = "over";
+    renderGameOver();
     return;
   }
-  setTimeout(() => nextTurn(), 1100);
+  state.phase = "cooldown";
+  updatePlayers();
+  setTimeout(() => nextRound(), 900);
 }
 
-async function isRealWord(word) {
-  try {
-    const res = await fetch(`https://api.datamuse.com/words?sp=${word}&max=1`); // checks if its a real word
-    if (!res.ok) return false;
-    const data = await res.json();
-    return data.length > 0 && data[0].word === word;
-  } catch (e) {
-    return false;
-  }
-}
-
-function acceptWord(player, word) { 
-  if (state.timer) { clearInterval(state.timer); state.timer = null; }
-  if (state.botTimeoutId) { clearTimeout(state.botTimeoutId); state.botTimeoutId = null; }
-  state.usedWords.add(word);
-  state.history.unshift({ author: player, word });
-  state.feedback = { text: `${player.isMe ? "You" : player.name}: ${word}`, kind: "good" };
-  state.inputLocked = true;
-  renderGame();
-  setTimeout(() => nextTurn(), 600);
-}
-
-async function submitMyWord(raw) {
-  if (state.inputLocked) return;
-
+function submitMyWord(raw) {
+  if (state.phase !== "playing") return;
   const word = (raw || "").trim().toLowerCase();
   if (!word) return;
-
-  const result = checkWord(word, state.trigram, state.usedWords);
+  const result = validateWord(word, state.trigram, state.usedWords);
   if (!result.ok) {
+    state.combo = 0;
     setFeedback(result.reason, "bad");
-    const input = document.getElementById("wordInput");
-    if (input) { input.value = ""; input.focus(); }
+    state.els.input.value = "";
+    state.els.input.focus();
     return;
   }
+  acceptWord(word);
+}
 
-  const valid = await isRealWord(word);
-  if (!valid) {
-    setFeedback("Not a real word", "bad");
-    const input = document.getElementById("wordInput");
-    if (input) { input.value = ""; input.focus(); }
-    return;
-  }
-
-  acceptWord(state.players[state.turnIndex], word);
+function acceptWord(word) {
+  clearTimer();
+  state.usedWords.add(word);
+  state.combo += 1;
+  state.maxCombo = Math.max(state.maxCombo, state.combo);
+  const extra = Math.max(0, word.length - 5);
+  const score = 100 + 5 * extra * (extra + 1);
+  state.score += score;
+  if (currentUser)
+    logTrigramPlay({
+      trigram: state.trigram,
+      solved: true,
+      wordlength: word.length,
+      timetaken: parseFloat((turnSeconds - state.timeLeft).toFixed(3)),
+    }).catch((err) =>
+      console.error("logTrigramPlay (solve):", err?.message ?? err),
+    );
+  state.phase = "cooldown";
+  setFeedback(`+${score}`, "good");
+  addHistoryItem(word);
+  updatePlayers();
+  updateStage();
+  setTimeout(() => nextRound(), 500);
 }
 
 function setFeedback(text, kind) {
   state.feedback = { text, kind };
-  const el = document.querySelector(".feedback");
+  const el = state.els?.feedback;
   if (el) {
     el.textContent = text;
     el.className = `feedback ${kind}`;
   }
 }
 
-function renderGame() {
-  app.innerHTML = "";
-  if (state.over) {
-    renderGameOver();
-    return;
-  }
-  const wrap = document.createElement("div");
-  wrap.className = "game";
-
-  const playersEl = document.createElement("div");
-  playersEl.className = "players";
-  state.players.forEach((p, idx) => {
-    const isActive = idx === state.turnIndex && p.lives > 0;
-    const isDead = p.lives <= 0;
-    const div = document.createElement("div");
-    div.className = `player ${isActive ? "active" : ""} ${isDead ? "dead" : ""} ${p.isMe ? "me" : ""}`;
-    const hearts = Array.from({ length: startingLives }, (_, i) =>
-      `<span class="heart ${i < p.lives ? "" : "lost"}">●</span>`
-    ).join("");
-    div.innerHTML = `<div class="name">${p.isMe ? "You" : p.name}</div><div class="lives">${hearts}</div>`;
-    playersEl.appendChild(div);
-  });
-  wrap.appendChild(playersEl);
-
-  const stage = document.createElement("div");
-  stage.className = "stage";
-  const current = state.players[state.turnIndex];
-  const trigramDisplay = state.loadingTrigram ? "…" : state.trigram;
-  stage.innerHTML = `
-    <div class="turnLabel">Now playing — <span class="who">${current.isMe ? "You" : current.name}</span></div>
-    <div class="bomb">
-      <div class="ring"></div>
-      <div class="ring progress" style="--p:0"></div>
-      <div class="trigram">${trigramDisplay}</div>
-      <div class="timer">${state.loadingTrigram ? "…" : state.timeLeft.toFixed(1) + "s"}</div>
+function renderGameFrame() {
+  const gameScreen = renderScreen(
+    "game",
+    `
+    <div class="players"></div>
+    <div class="stage">
+      <div class="turnLabel">Survival Mode</div>
+      <div class="bomb">
+        <div class="ring"></div>
+        <div class="ring progress" style="--p:0"></div>
+        <div class="trigram"></div>
+        <div class="timer"></div>
+      </div>
+      <div class="inputRow">
+        <input id="wordInput" type="text" autocomplete="off" />
+        <div class="feedback"></div>
+      </div>
     </div>
-    <div class="inputRow">
-      <input id="wordInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
-        placeholder="${state.loadingTrigram ? "Generating letters…" : current.isMe ? `Type a word containing "${state.trigram.toUpperCase()}"` : `${current.name} is thinking…`}"
-        ${current.isMe && !state.loadingTrigram ? "" : "disabled"} />
-      <div class="feedback ${state.feedback.kind}">${state.feedback.text}</div>
+    <div class="history" hidden>
+      <h4>Played words</h4>
+      <div class="items"></div>
+    </div>
+  `,
+  );
+  const input = gameScreen.querySelector("#wordInput");
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submitMyWord(input.value);
+  });
+  state.els = {
+    players: gameScreen.querySelector(".players"),
+    trigram: gameScreen.querySelector(".bomb .trigram"),
+    timer: gameScreen.querySelector(".bomb .timer"),
+    ring: gameScreen.querySelector(".bomb .ring.progress"),
+    bomb: gameScreen.querySelector(".bomb"),
+    input,
+    feedback: gameScreen.querySelector(".feedback"),
+    history: gameScreen.querySelector(".history"),
+    histItems: gameScreen.querySelector(".history .items"),
+  };
+  updatePlayers();
+  updateStage();
+}
+
+function updatePlayers() {
+  const el = state.els?.players;
+  if (!el) return;
+  el.innerHTML = `
+    <div class="player me">
+      <div class="name">${currentUser ? escapeHtml(currentUser.username) : "You"}</div>
+      <div class="meta">
+        <div class="score">Score: ${state.score}</div>
+        <div class="combo">Combo: x${state.combo}</div>
+      </div>
+      <div class="lives">
+        ${Array.from(
+          { length: startingLives },
+          (_, i) =>
+            `<span class="heart ${i < state.lives ? "" : "lost"}">●</span>`,
+        ).join("")}
+      </div>
     </div>
   `;
-  wrap.appendChild(stage);
+}
 
-  if (state.history.length > 0) {
-    const hist = document.createElement("div");
-    hist.className = "history";
-    hist.innerHTML = `<h4>Played words</h4><div class="items">` +
-      state.history.slice(0, 40).map(h =>
-        `<span class="item ${h.author.isMe ? "me" : ""}"><span class="author">${h.author.isMe ? "You" : h.author.name}</span>${h.word}</span>`
-      ).join("") +
-      `</div>`;
-    wrap.appendChild(hist);
+function updateStage() {
+  const { trigram, timer, input } = state.els;
+  const loading = state.phase === "loading";
+  trigram.textContent = loading ? "…" : state.trigram;
+  timer.textContent = loading
+    ? "…"
+    : `${Math.max(0, state.timeLeft).toFixed(1)}s`;
+  input.disabled = state.phase !== "playing";
+  input.placeholder = loading
+    ? "Loading..."
+    : `Include "${state.trigram.toUpperCase()}"`;
+  if (state.phase === "playing") {
+    input.value = "";
+    input.focus();
+  }
+  updateBomb();
+}
+
+function updateBomb() {
+  if (state.phase !== "playing") return;
+  const solveRate = Math.max(0, (state.timeLeft / turnSeconds) * 100);
+  state.els.ring.style.setProperty("--p", solveRate.toString());
+  state.els.bomb.classList.toggle("danger", state.timeLeft <= 2.5);
+}
+
+function addHistoryItem(word) {
+  const { history, histItems } = state.els;
+  history.hidden = false;
+  const span = document.createElement("span");
+  span.className = "item me";
+  span.textContent = word;
+  histItems.prepend(span);
+  while (histItems.children.length > 40) histItems.lastChild.remove();
+}
+
+async function renderGameOver() {
+  app.innerHTML = "";
+  const screen = document.createElement("div");
+  screen.className = "gameover";
+  const canSave = !!currentUser;
+
+  const statsDiv = document.createElement("div");
+  statsDiv.innerHTML = `
+    <h2 class="lose">Game Over</h2>
+    <p><b>Score:</b> ${state.score.toLocaleString()}</p>
+    <p><b>Words:</b> ${state.usedWords.size}</p>
+    <p><b>Max Combo:</b> x${state.maxCombo}</p>
+  `;
+
+  const actions = document.createElement("div");
+  actions.className = "gameover-actions";
+  actions.append(
+    makeButton("play", "Play Again", startGame),
+    ...(canSave
+      ? [makeButton("btn-secondary", "My Stats", () => renderStats())]
+      : []),
+    makeButton("btn-secondary", "Leaderboard", () => renderLeaderboard()),
+    makeButton("btn-secondary", "Home", renderHome),
+  );
+
+  let statusEl = null;
+  if (canSave) {
+    statusEl = document.createElement("p");
+    statusEl.className = "save-status";
+    statusEl.textContent = "Saving score…";
+    statsDiv.appendChild(statusEl);
   }
 
-  app.appendChild(wrap);
-  updateBomb();
+  screen.append(statsDiv, actions);
+  app.appendChild(screen);
 
-  if (current.isMe && !state.loadingTrigram) {
-    const input = document.getElementById("wordInput");
-    if (input) {
-      input.focus();
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          submitMyWord(input.value);
-        }
+  if (canSave) {
+    try {
+      await saveScore({
+        score: state.score,
+        wordsused: state.usedWords.size,
+        maxcombo: state.maxCombo,
       });
+      statusEl.textContent = "Score saved!";
+      statusEl.classList.add("save-ok");
+    } catch (err) {
+      statusEl.textContent = "Could not save score: " + (err?.message ?? err);
+      statusEl.classList.add("save-err");
     }
   }
 }
 
-function updateBomb() {
-  const ring = document.querySelector(".bomb .ring.progress");
-  const timer = document.querySelector(".bomb .timer");
-  const bomb = document.querySelector(".bomb");
-  if (!ring || !timer || !bomb) return;
-  if (state.loadingTrigram) return;
-  const pct = Math.max(0, (state.timeLeft / turnSeconds) * 100);
-  ring.style.setProperty("--p", pct.toString());
-  timer.textContent = `${Math.max(0, state.timeLeft).toFixed(1)}s`;
-  if (state.timeLeft <= 2.5) bomb.classList.add("danger");
-  else bomb.classList.remove("danger");
-}
-
-function renderGameOver() {
-  const wrap = document.createElement("div");
-  wrap.className = "gameover";
-  const won = state.winner && state.winner.isMe;
-  wrap.innerHTML = `
-    <h2 class="${won ? "win" : "lose"}">${won ? "so like that wasn't supposed to happen..." : "haha you lost"}</h2>
-    <p>${won ? "ijarian" : "geegees i suppose."}</p>
-    <button class="play" id="again">Play Again</button>
-    <div style="height:12px"></div>
-    <button class="play" id="home" style="background:transparent; box-shadow:none; color:var(--muted); border:1px solid var(--border); padding:14px 36px; font-size:15px">Home</button>
-  `;
-  app.appendChild(wrap);
-  document.getElementById("again").addEventListener("click", () => startGame());
-  document.getElementById("home").addEventListener("click", () => showHome());
-}
-
-showHome();
+(async () => {
+  await initAuth();
+  renderHome();
+})();
