@@ -311,7 +311,7 @@ function renderHome() {
   actions.className = "home-actions";
 
   if (currentUser) {
-    tagline.textContent = "Three letters. Seven seconds. Survive 3 mistakes.";
+    tagline.textContent = "Incorporate a trigram of 3 letters into tour response in 7 seconds";
 
     const greeting = document.createElement("p");
     greeting.className = "user-greeting";
