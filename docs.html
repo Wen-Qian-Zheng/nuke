@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Word Bomb - API Docs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/docsStyles.css" />
+  </head>
+  <body>
+    <div class="layout">
+
+      <nav class="sidebar">
+        <div class="sidebar-logo">Word Bomb <span>API Reference</span></div>
+
+        <div class="nav-section">Auth</div>
+        <a class="nav-link" href="#register">Register</a>
+        <a class="nav-link" href="#login">Login</a>
+        <a class="nav-link" href="#logout">Logout</a>
+        <a class="nav-link" href="#me-get">Get Current User</a>
+        <a class="nav-link" href="#me-patch">Update Username</a>
+        <a class="nav-link" href="#me-delete">Delete Account</a>
+        <a class="nav-link" href="#pfp-post">Upload Profile Picture</a>
+        <a class="nav-link" href="#pfp-delete">Remove Profile Picture</a>
+        <a class="nav-link" href="#reset">Reset Password</a>
+
+        <div class="nav-section">Scores</div>
+        <a class="nav-link" href="#scores-post">Save Score</a>
+        <a class="nav-link" href="#leaderboard">Leaderboard</a>
+        <a class="nav-link" href="#mine">My Scores</a>
+        <a class="nav-link" href="#trigram-post">Log Trigram Play</a>
+        <a class="nav-link" href="#trigram-mine">My Trigram Plays</a>
+
+        <div class="nav-section">Admin</div>
+        <a class="nav-link" href="#admin-scores-get">List Scores</a>
+        <a class="nav-link" href="#admin-scores-post">Create Score</a>
+        <a class="nav-link" href="#admin-scores-put">Update Score</a>
+        <a class="nav-link" href="#admin-scores-delete-one">Delete Score</a>
+        <a class="nav-link" href="#admin-scores-bulk">Bulk Delete Scores</a>
+        <a class="nav-link" href="#admin-tp-get">List Trigram Plays</a>
+        <a class="nav-link" href="#admin-tp-delete-one">Delete Trigram Play</a>
+        <a class="nav-link" href="#admin-tp-bulk">Bulk Delete Trigram Plays</a>
+      </nav>
+
+      <main class="main">
+        <div class="page-title">API Reference</div>
+        <div class="page-subtitle">
+          Base URL: <code style="font-family:'JetBrains Mono',monospace;color:var(--accent)">/api</code>&nbsp;&nbsp;·&nbsp;&nbsp;
+          All requests and responses use JSON unless otherwise noted.&nbsp;&nbsp;·&nbsp;&nbsp;
+          Protected routes require a valid <code style="font-family:'JetBrains Mono',monospace;color:var(--blue)">token</code> cookie, issued at login.
+        </div>
+
+        <div class="section">
+          <div class="section-title">Authentication</div>
+
+          <div class="endpoint" id="register">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/api/auth/register</span>
+              <span class="endpoint-summary">Create a new account</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Creates a new player account, hashes the provided password with bcrypt, and sets a signed JWT cookie valid for 7 days.</div>
+              <div class="label">Request Body</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+                <tr><td>email</td><td>string</td><td class="req">Yes</td><td>Unique email address for the account.</td></tr>
+                <tr><td>password</td><td>string</td><td class="req">Yes</td><td>Plain-text password. Hashed with bcrypt before storage.</td></tr>
+                <tr><td>username</td><td>string</td><td class="opt">No</td><td>Display name. Defaults to the local part of the email address.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/auth/register", {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    email: "player@example.com",
+    password: "securePassword1",
+    username: "PlayerOne"
+  })
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "id": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "email": "player@example.com",
+  "username": "PlayerOne",
+  "isAdmin": false,
+  "pfpUrl": null
+}</pre>
+              <div class="label">Errors</div>
+              <table class="param-table">
+                <tr><th>Status</th><th>Message</th></tr>
+                <tr><td>400</td><td>Need both email AND password, come on!</td></tr>
+                <tr><td>400</td><td>That email's already taken, snooze you lose!</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="endpoint" id="login">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/api/auth/login</span>
+              <span class="endpoint-summary">Log in to an existing account</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Verifies the provided credentials and sets a signed JWT cookie valid for 7 days.</div>
+              <div class="label">Request Body</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th></tr>
+                <tr><td>email</td><td>string</td><td class="req">Yes</td></tr>
+                <tr><td>password</td><td>string</td><td class="req">Yes</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/auth/login", {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    email: "player@example.com",
+    password: "securePassword1"
+  })
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "id": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "email": "player@example.com",
+  "username": "PlayerOne",
+  "isAdmin": false,
+  "pfpUrl": null
+}</pre>
+              <div class="label">Errors</div>
+              <table class="param-table">
+                <tr><th>Status</th><th>Message</th></tr>
+                <tr><td>401</td><td>Wrong email or password, try again!</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="endpoint" id="logout">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/api/auth/logout</span>
+              <span class="endpoint-summary">Clear the session cookie</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Clears the <code>token</code> cookie. No request body is required.</div>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/auth/logout", {
+  method: "POST",
+  credentials: "include"
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{ "ok": true }</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="me-get">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method get">GET</span>
+              <span class="endpoint-path">/api/auth/me</span>
+              <span class="endpoint-summary">Get the current user</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Returns the currently authenticated user object. Returns <code>null</code> if no valid session exists. Silently refreshes the JWT cookie on success.</div>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/auth/me", {
+  credentials: "include"
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "id": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "email": "player@example.com",
+  "username": "PlayerOne",
+  "isAdmin": false,
+  "pfpUrl": null
+}</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="me-patch">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method patch">PATCH</span>
+              <span class="endpoint-path">/api/auth/me</span>
+              <span class="endpoint-summary">Update display name</span>
+              <span class="badge">Auth</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Updates the authenticated player's display name and backfills the new name on all existing score records.</div>
+              <div class="label">Request Body</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th></tr>
+                <tr><td>username</td><td>string</td><td class="req">Yes</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/auth/me", {
+  method: "PATCH",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ username: "NewHandle" })
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "id": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "email": "player@example.com",
+  "username": "NewHandle",
+  "isAdmin": false,
+  "pfpUrl": null
+}</pre>
+              <div class="label">Errors</div>
+              <table class="param-table">
+                <tr><th>Status</th><th>Message</th></tr>
+                <tr><td>400</td><td>You need a username, duh!</td></tr>
+                <tr><td>401</td><td>Who are you? Log in first!</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="endpoint" id="me-delete">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method delete">DELETE</span>
+              <span class="endpoint-path">/api/auth/me</span>
+              <span class="endpoint-summary">Delete account</span>
+              <span class="badge">Auth</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Permanently deletes the authenticated account along with all associated scores, trigram plays, and the Cloudinary profile picture. Admin accounts cannot be deleted via this endpoint.</div>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/auth/me", {
+  method: "DELETE",
+  credentials: "include"
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{ "ok": true }</pre>
+              <div class="label">Errors</div>
+              <table class="param-table">
+                <tr><th>Status</th><th>Message</th></tr>
+                <tr><td>401</td><td>Who are you? Log in first!</td></tr>
+                <tr><td>403</td><td>Can't delete admin accounts, silly!</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="endpoint" id="pfp-post">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/api/auth/me/pfp</span>
+              <span class="endpoint-summary">Upload profile picture</span>
+              <span class="badge">Auth</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Accepts <code>multipart/form-data</code>. Uploads the image to Cloudinary and crops it to 256x256 pixels using face-gravity cropping.</div>
+              <div class="label">Form Fields</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Constraints</th></tr>
+                <tr><td>pfp</td><td>file</td><td>Accepted formats: jpg, jpeg, png, gif, webp. Maximum size: 2 MB.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>const formData = new FormData()
+formData.append("pfp", fileInput.files[0])
+
+fetch("/api/auth/me/pfp", {
+  method: "POST",
+  credentials: "include",
+  body: formData
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "id": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "email": "player@example.com",
+  "username": "PlayerOne",
+  "isAdmin": false,
+  "pfpUrl": "https://res.cloudinary.com/demo/image/upload/v1/64a1b2c3d4e5f6a7b8c9d0e1"
+}</pre>
+              <div class="label">Errors</div>
+              <table class="param-table">
+                <tr><th>Status</th><th>Message</th></tr>
+                <tr><td>400</td><td>You forgot to attach a file?</td></tr>
+                <tr><td>400</td><td>Images only! (jpeg, png, gif, webp)</td></tr>
+                <tr><td>400</td><td>File too large (max 2 MB)</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="endpoint" id="pfp-delete">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method delete">DELETE</span>
+              <span class="endpoint-path">/api/auth/me/pfp</span>
+              <span class="endpoint-summary">Remove profile picture</span>
+              <span class="badge">Auth</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Removes the profile picture from Cloudinary and sets <code>pfpUrl</code> to <code>null</code> on the account.</div>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/auth/me/pfp", {
+  method: "DELETE",
+  credentials: "include"
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "id": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "email": "player@example.com",
+  "username": "PlayerOne",
+  "isAdmin": false,
+  "pfpUrl": null
+}</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="reset">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/api/auth/reset-by-username</span>
+              <span class="endpoint-summary">Reset password</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Resets a player's password by matching both the provided username and email address against existing account records.</div>
+              <div class="label">Request Body</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+                <tr><td>username</td><td>string</td><td class="req">Yes</td><td>The account's current display name.</td></tr>
+                <tr><td>email</td><td>string</td><td class="req">Yes</td><td>The email address associated with the account.</td></tr>
+                <tr><td>password</td><td>string</td><td class="req">Yes</td><td>The new password to set. Minimum 6 characters.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/auth/reset-by-username", {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    username: "PlayerOne",
+    email: "player@example.com",
+    password: "newPassword123"
+  })
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{ "message": "Password changed! Go log in!" }</pre>
+              <div class="label">Errors</div>
+              <table class="param-table">
+                <tr><th>Status</th><th>Message</th></tr>
+                <tr><td>400</td><td>Need username, email AND a new password for this!</td></tr>
+                <tr><td>400</td><td>Password needs to be at least 6 chars, come on!</td></tr>
+                <tr><td>404</td><td>No one matching that username + email combo!</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Scores</div>
+
+          <div class="endpoint" id="scores-post">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/api/scores</span>
+              <span class="endpoint-summary">Save a game score</span>
+              <span class="badge">Auth</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Records a completed game score for the authenticated player.</div>
+              <div class="label">Request Body</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+                <tr><td>score</td><td>number</td><td class="req">Yes</td><td>Final numeric score for the game.</td></tr>
+                <tr><td>wordsused</td><td>number</td><td class="req">Yes</td><td>Total number of words entered during the game.</td></tr>
+                <tr><td>maxcombo</td><td>number</td><td class="req">Yes</td><td>Highest consecutive combo reached.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/scores", {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    score: 2400,
+    wordsused: 18,
+    maxcombo: 7
+  })
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "_id": "64b9c1d2e3f4a5b6c7d8e9f0",
+  "userId": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "username": "PlayerOne",
+  "score": 2400,
+  "wordsused": 18,
+  "maxcombo": 7,
+  "createdAt": "2024-11-15T14:32:00.000Z"
+}</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="leaderboard">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method get">GET</span>
+              <span class="endpoint-path">/api/scores/leaderboard</span>
+              <span class="endpoint-summary">Paginated top scores</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Returns paginated top scores sorted by the specified field. No authentication is required.</div>
+              <div class="label">Query Parameters</div>
+              <table class="param-table">
+                <tr><th>Param</th><th>Default</th><th>Description</th></tr>
+                <tr><td>sort</td><td>score</td><td>Sort field. Accepted values: <code>score</code>, <code>wordsused</code>, <code>maxcombo</code>.</td></tr>
+                <tr><td>page</td><td>1</td><td>Page number.</td></tr>
+                <tr><td>limit</td><td>15</td><td>Results per page. Maximum: 200.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/scores/leaderboard?sort=score&page=1&limit=15")</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "data": [
+    {
+      "username": "PlayerOne",
+      "score": 2400,
+      "wordsused": 18,
+      "maxcombo": 7,
+      "createdAt": "2024-11-15T14:32:00.000Z",
+      "pfpUrl": null
+    }
+  ],
+  "pagination": {
+    "total": 42,
+    "page": 1,
+    "limit": 15,
+    "totalPages": 3
+  }
+}</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="mine">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method get">GET</span>
+              <span class="endpoint-path">/api/scores/mine</span>
+              <span class="endpoint-summary">My score history</span>
+              <span class="badge">Auth</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Returns the authenticated player's score history, sorted by most recent first.</div>
+              <div class="label">Query Parameters</div>
+              <table class="param-table">
+                <tr><th>Param</th><th>Default</th><th>Description</th></tr>
+                <tr><td>page</td><td>1</td><td>Page number.</td></tr>
+                <tr><td>limit</td><td>20</td><td>Results per page. Maximum: 200.</td></tr>
+                <tr><td>since</td><td></td><td>ISO 8601 date string. When provided, only scores recorded after this date are returned.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/scores/mine?page=1&limit=20", {
+  credentials: "include"
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "data": [
+    {
+      "score": 2400,
+      "wordsused": 18,
+      "maxcombo": 7,
+      "createdAt": "2024-11-15T14:32:00.000Z"
+    }
+  ],
+  "pagination": {
+    "total": 8,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 1
+  }
+}</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="trigram-post">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/api/scores/trigram</span>
+              <span class="endpoint-summary">Log a trigram attempt</span>
+              <span class="badge">Auth</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Records a single trigram attempt for the authenticated player, regardless of whether the attempt was successful.</div>
+              <div class="label">Request Body</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+                <tr><td>trigram</td><td>string</td><td class="req">Yes</td><td>The 3-letter sequence that was presented.</td></tr>
+                <tr><td>solved</td><td>boolean</td><td class="req">Yes</td><td>Whether the player submitted a valid word before time expired.</td></tr>
+                <tr><td>wordlength</td><td>number | null</td><td class="opt">No</td><td>Character length of the submitted word. Null if unsolved.</td></tr>
+                <tr><td>timetaken</td><td>number | null</td><td class="opt">No</td><td>Seconds elapsed before submission. Null if unsolved.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/scores/trigram", {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    trigram: "ack",
+    solved: true,
+    wordlength: 7,
+    timetaken: 3.41
+  })
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "_id": "64c7d8e9f0a1b2c3d4e5f6a7",
+  "userId": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "trigram": "ack",
+  "solved": true,
+  "wordlength": 7,
+  "timetaken": 3.41,
+  "createdAt": "2024-11-15T14:32:05.000Z"
+}</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="trigram-mine">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method get">GET</span>
+              <span class="endpoint-path">/api/scores/trigram/mine</span>
+              <span class="endpoint-summary">My trigram play history</span>
+              <span class="badge">Auth</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Returns all trigram play records logged for the authenticated player.</div>
+              <div class="label">Query Parameters</div>
+              <table class="param-table">
+                <tr><th>Param</th><th>Description</th></tr>
+                <tr><td>since</td><td>ISO 8601 date string. When provided, only plays recorded after this date are returned.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/scores/trigram/mine?since=2024-11-01T00:00:00.000Z", {
+  credentials: "include"
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>[
+  {
+    "trigram": "ack",
+    "solved": true,
+    "wordlength": 7,
+    "timetaken": 3.41,
+    "createdAt": "2024-11-15T14:32:05.000Z"
+  },
+  {
+    "trigram": "str",
+    "solved": false,
+    "wordlength": null,
+    "timetaken": null,
+    "createdAt": "2024-11-15T14:31:58.000Z"
+  }
+]</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Admin</div>
+          <div class="ep-desc" style="margin-bottom:16px">All admin routes require <code>isAdmin: true</code> on the authenticated session. Returns <code>401</code> if not authenticated and <code>403</code> if the account does not have admin privileges.</div>
+
+          <div class="endpoint" id="admin-scores-get">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method get">GET</span>
+              <span class="endpoint-path">/api/admin/scores</span>
+              <span class="endpoint-summary">List all scores</span>
+              <span class="badge admin">Admin</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Returns all score records with pagination and optional sorting. Also includes the <code>pfpUrl</code> for each associated user.</div>
+              <div class="label">Query Parameters</div>
+              <table class="param-table">
+                <tr><th>Param</th><th>Default</th><th>Description</th></tr>
+                <tr><td>sort</td><td>score</td><td>Sort field. Accepted values: <code>score</code>, <code>wordsused</code>, <code>maxcombo</code>, <code>createdAt</code>.</td></tr>
+                <tr><td>page</td><td>1</td><td>Page number.</td></tr>
+                <tr><td>limit</td><td>20</td><td>Results per page. Maximum: 200.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/admin/scores?sort=createdAt&page=1&limit=20", {
+  credentials: "include"
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "data": [
+    {
+      "id": "64b9c1d2e3f4a5b6c7d8e9f0",
+      "username": "PlayerOne",
+      "score": 2400,
+      "wordsused": 18,
+      "maxcombo": 7,
+      "createdAt": "2024-11-15T14:32:00.000Z",
+      "pfpUrl": null
+    }
+  ],
+  "pagination": {
+    "total": 100,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 5
+  }
+}</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="admin-scores-post">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/api/admin/scores</span>
+              <span class="endpoint-summary">Create a score entry</span>
+              <span class="badge admin">Admin</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Creates a new score record. If the provided username matches an existing account, the record is linked to that user's ID.</div>
+              <div class="label">Request Body</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th></tr>
+                <tr><td>username</td><td>string</td><td class="req">Yes</td></tr>
+                <tr><td>score</td><td>number</td><td class="req">Yes</td></tr>
+                <tr><td>wordsused</td><td>number</td><td class="req">Yes</td></tr>
+                <tr><td>maxcombo</td><td>number</td><td class="req">Yes</td></tr>
+              </table>
+              <div class="validation-note">
+                Validation: <code>wordsused</code> must be greater than or equal to <code>maxcombo</code>, and <code>score</code> must be greater than or equal to <code>100 x wordsused</code>.
+              </div>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/admin/scores", {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    username: "PlayerOne",
+    score: 2400,
+    wordsused: 18,
+    maxcombo: 7
+  })
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "id": "64b9c1d2e3f4a5b6c7d8e9f0",
+  "username": "PlayerOne",
+  "score": 2400,
+  "wordsused": 18,
+  "maxcombo": 7,
+  "createdAt": "2024-11-15T14:32:00.000Z"
+}</pre>
+              <div class="label">Errors</div>
+              <table class="param-table">
+                <tr><th>Status</th><th>Message</th></tr>
+                <tr><td>400</td><td>Validation error message describing the constraint that was violated.</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="endpoint" id="admin-scores-put">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method put">PUT</span>
+              <span class="endpoint-path">/api/admin/scores/:id</span>
+              <span class="endpoint-summary">Update a score entry</span>
+              <span class="badge admin">Admin</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Replaces the fields of an existing score record. Accepts the same body and validation constraints as the POST endpoint.</div>
+              <div class="label">Request Body</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th></tr>
+                <tr><td>username</td><td>string</td><td class="opt">No</td></tr>
+                <tr><td>score</td><td>number</td><td class="opt">No</td></tr>
+                <tr><td>wordsused</td><td>number</td><td class="opt">No</td></tr>
+                <tr><td>maxcombo</td><td>number</td><td class="opt">No</td></tr>
+              </table>
+              <div class="validation-note">
+                Validation: <code>wordsused</code> must be greater than or equal to <code>maxcombo</code>, and <code>score</code> must be greater than or equal to <code>100 x wordsused</code>.
+              </div>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/admin/scores/64b9c1d2e3f4a5b6c7d8e9f0", {
+  method: "PUT",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    username: "PlayerOne",
+    score: 2600,
+    wordsused: 20,
+    maxcombo: 8
+  })
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{
+  "id": "64b9c1d2e3f4a5b6c7d8e9f0",
+  "username": "PlayerOne",
+  "score": 2600,
+  "wordsused": 20,
+  "maxcombo": 8,
+  "createdAt": "2024-11-15T14:32:00.000Z"
+}</pre>
+              <div class="label">Errors</div>
+              <table class="param-table">
+                <tr><th>Status</th><th>Message</th></tr>
+                <tr><td>400</td><td>Validation error message describing the constraint that was violated.</td></tr>
+                <tr><td>404</td><td>Can't find that anywhere!</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div class="endpoint" id="admin-scores-delete-one">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method delete">DELETE</span>
+              <span class="endpoint-path">/api/admin/scores/:id</span>
+              <span class="endpoint-summary">Delete a single score</span>
+              <span class="badge admin">Admin</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Permanently deletes the score record with the specified ID.</div>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/admin/scores/64b9c1d2e3f4a5b6c7d8e9f0", {
+  method: "DELETE",
+  credentials: "include"
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{ "ok": true }</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="admin-scores-bulk">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method delete">DELETE</span>
+              <span class="endpoint-path">/api/admin/scores</span>
+              <span class="endpoint-summary">Bulk delete scores</span>
+              <span class="badge admin">Admin</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Permanently deletes multiple score records in a single operation.</div>
+              <div class="label">Request Body</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+                <tr><td>ids</td><td>string[]</td><td class="req">Yes</td><td>Array of score document IDs to delete.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/admin/scores", {
+  method: "DELETE",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    ids: [
+      "64b9c1d2e3f4a5b6c7d8e9f0",
+      "64b9c1d2e3f4a5b6c7d8e9f1",
+      "64b9c1d2e3f4a5b6c7d8e9f2"
+    ]
+  })
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{ "ok": true }</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="admin-tp-get">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method get">GET</span>
+              <span class="endpoint-path">/api/admin/trigram-plays</span>
+              <span class="endpoint-summary">List all trigram plays</span>
+              <span class="badge admin">Admin</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Returns all trigram play records across all users, sorted by most recent first.</div>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/admin/trigram-plays", {
+  credentials: "include"
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>[
+  {
+    "id": "64c7d8e9f0a1b2c3d4e5f6a7",
+    "userId": "64a1b2c3d4e5f6a7b8c9d0e1",
+    "trigram": "ack",
+    "solved": true,
+    "wordlength": 7,
+    "timetaken": 3.41,
+    "createdAt": "2024-11-15T14:32:05.000Z"
+  }
+]</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="admin-tp-delete-one">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method delete">DELETE</span>
+              <span class="endpoint-path">/api/admin/trigram-plays/:id</span>
+              <span class="endpoint-summary">Delete a single trigram play</span>
+              <span class="badge admin">Admin</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Permanently deletes the trigram play record with the specified ID.</div>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/admin/trigram-plays/64c7d8e9f0a1b2c3d4e5f6a7", {
+  method: "DELETE",
+  credentials: "include"
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{ "ok": true }</pre>
+            </div>
+          </div>
+
+          <div class="endpoint" id="admin-tp-bulk">
+            <div class="endpoint-header" onclick="toggle(this)">
+              <span class="method delete">DELETE</span>
+              <span class="endpoint-path">/api/admin/trigram-plays</span>
+              <span class="endpoint-summary">Bulk delete trigram plays</span>
+              <span class="badge admin">Admin</span>
+              <span class="chevron">▶</span>
+            </div>
+            <div class="endpoint-body">
+              <div class="ep-desc">Permanently deletes multiple trigram play records in a single operation.</div>
+              <div class="label">Request Body</div>
+              <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+                <tr><td>ids</td><td>string[]</td><td class="req">Yes</td><td>Array of trigram play document IDs to delete.</td></tr>
+              </table>
+              <div class="label">Example Request</div>
+              <pre>fetch("/api/admin/trigram-plays", {
+  method: "DELETE",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    ids: [
+      "64c7d8e9f0a1b2c3d4e5f6a7",
+      "64c7d8e9f0a1b2c3d4e5f6a8"
+    ]
+  })
+})</pre>
+              <div class="label">Response 200</div>
+              <pre>{ "ok": true }</pre>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      function toggle(header) {
+        header.closest('.endpoint').classList.toggle('open');
+      }
+    </script>
+  </body>
+</html>

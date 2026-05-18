@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Word Bomb - Admin</title>
+    <link rel="stylesheet" href="/adminStyles.css" />
+  </head>
+  <body>
+    <div class="gate" id="auth-screen">
+      <div class="gate-box">
+        <h2>Word Bomb - Admin Login</h2>
+        <div class="field">
+          <label>Email</label>
+          <input id="login-email" type="email" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input
+            id="login-password"
+            type="password"
+            placeholder="••••••••"
+            onkeydown="if(event.key==='Enter') adminLogin()"
+          />
+        </div>
+        <div class="login-error" id="login-error"></div>
+        <button
+          class="btn btn-primary"
+          style="width: 100%"
+          onclick="adminLogin()"
+        >
+          Sign In
+        </button>
+      </div>
+    </div>
+    <div class="gate" id="denied-screen">
+      <div class="gate-box">
+        <h2>Access Denied</h2>
+        <p class="denied-msg">
+          <strong class="denied-email"></strong> does not have admin
+          privileges.<br /><br />
+          Contact the developer to grant access, then try again. Otherwise, get the hell outta here.
+        </p>
+        <button
+          class="btn"
+          style="
+            background: var(--border);
+            color: var(--text);
+            margin-top: 20px;
+            width: 100%;
+          "
+          onclick="adminSignOut()"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+
+    <div id="admin-content">
+      <div class="topbar">
+        <h1>Word Bomb Admin</h1>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span
+            style="
+              font-size: 0.82rem;
+              color: var(--empty);
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            "
+            id="user-info"
+          ></span>
+          <button
+            class="btn"
+            style="background: var(--border); color: var(--muted)"
+            onclick="adminSignOut()"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('leaderboard')">
+          Leaderboard
+        </button>
+        <button class="tab" onclick="switchTab('trigramplays')">
+          Trigram Plays
+        </button>
+      </div>
+
+      <div id="panel-leaderboard" class="panel active">
+        <div class="toolbar">
+          <input
+            id="lb-search"
+            type="text"
+            placeholder="Search username…"
+            oninput="renderLeaderboard()"
+          />
+          <select id="lb-sort" onchange="loadLeaderboard()">
+            <option value="score">Sort: Score</option>
+            <option value="wordsused">Sort: Words Used</option>
+            <option value="maxcombo">Sort: Max Combo</option>
+            <option value="createdAt">Sort: Date</option>
+          </select>
+          <button class="btn btn-primary" onclick="openAddModal()">
+            + Add Row
+          </button>
+          <button
+            class="btn btn-danger"
+            onclick="deleteSelected('leaderboard')"
+          >
+            Delete Selected
+          </button>
+          <button
+            class="btn"
+            style="background: var(--panel); color: var(--muted)"
+            onclick="loadLeaderboard()"
+          >
+            Refresh
+          </button>
+        </div>
+        <div class="status" id="lb-status">Loading…</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    id="lb-check-all"
+                    onchange="toggleAll('leaderboard')"
+                  />
+                </th>
+                <th></th>
+                <th>Username</th>
+                <th>Score</th>
+                <th>Words Used</th>
+                <th>Max Combo</th>
+                <th>Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="lb-tbody"></tbody>
+          </table>
+        </div>
+        <div id="lb-pager" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 0"></div>
+      </div>
+
+      <div id="panel-trigramplays" class="panel">
+        <div class="toolbar">
+          <input
+            id="tp-search"
+            type="text"
+            placeholder="Search trigram or user…"
+            oninput="renderTrigramPlays()"
+          />
+          <select id="tp-filter" onchange="renderTrigramPlays()">
+            <option value="">All</option>
+            <option value="true">Solved only</option>
+            <option value="false">Failed only</option>
+          </select>
+          <button
+            class="btn btn-danger"
+            onclick="deleteSelected('trigramplays')"
+          >
+            Delete Selected
+          </button>
+          <button
+            class="btn"
+            style="background: var(--panel); color: var(--muted)"
+            onclick="loadTrigramPlays()"
+          >
+            Refresh
+          </button>
+        </div>
+        <div class="status" id="tp-status">Loading…</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    id="tp-check-all"
+                    onchange="toggleAll('trigramplays')"
+                  />
+                </th>
+                <th>User ID</th>
+                <th>Trigram</th>
+                <th>Solved</th>
+                <th>Word Length</th>
+                <th>Time Taken (s)</th>
+                <th>Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tp-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+        <div class="modal">
+          <h2 id="modal-title">Edit Row</h2>
+          <div id="modal-fields"></div>
+          <p
+            id="modal-error"
+            style="
+              color: var(--error-text);
+              font-size: 0.82rem;
+              min-height: 18px;
+              margin: 8px 0 0;
+            "
+          ></p>
+          <div class="modal-actions">
+            <button
+              class="btn"
+              style="background: var(--border); color: var(--text)"
+              onclick="closeModalDirect()"
+            >
+              Cancel
+            </button>
+            <button class="btn btn-primary" onclick="saveModal()">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/admin.js"></script>
+  </body>
+</html>
