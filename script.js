@@ -17,7 +17,7 @@ import {
 
 const turnSeconds = 7;
 const startingLives = 3;
-const minUnusedWords = 1000;
+const minUnusedWords = 1500;
 const alphabet = "abcdefghijklmnopqrstuvwxyz";
 
 const app = document.getElementById("app");
