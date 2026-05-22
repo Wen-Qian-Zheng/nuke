@@ -403,7 +403,7 @@ function renderHome() {
   actions.className = "home-actions";
 
   if (currentUser) {
-    tagline.textContent = "Three letters. Seven seconds. Survive 3 mistakes.";
+    tagline.textContent = "Cheap ass WordBomb copy | 7 seconds limitation to solve trigram (5+ letters).";
 
     const greeting = document.createElement("div");
     greeting.className = "user-greeting";
