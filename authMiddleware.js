@@ -2,7 +2,7 @@ const jwt = require("jsonwebtoken");
 
 function requireAuth(req, res, next) {
   const token = req.cookies?.token;
-  if (!token) return res.status(401).json({ error: "Who are you? Log in first!" });
+  if (!token) return res.status(401).json({ error: "Log in first!" });
   try {
     req.user = jwt.verify(token, process.env.JWT_SECRET);
     next();
